@@ -4,41 +4,46 @@ import (
 	tagreader "dblpdistquery/parserecord"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
+	"sync"
 )
 
 var tags = []string{"article", "inproceedings", "proceedings", "book", "incollection", "phdthesis", "mastersthesis", "www", "data"}
 
-const xmlFile = "../dblp.xml"
+const blockNum = 207
 const recordSize = 50000
 
-func main() {
-	os.MkdirAll("dblp_blocks", 0777)
-	dblp, err := os.Open(xmlFile)
+func getBlockName(i int) string {
+	return fmt.Sprintf("dblp_blocks/block_%d.xml", i)
+}
+
+func queryBlock(blockName string, author string, wg *sync.WaitGroup) {
+	defer wg.Done()
+	dblp, err := os.Open(blockName)
 	if err != nil {
 		panic(err)
 	}
 	defer dblp.Close()
 
 	cnt := 0
-
 	tr := tagreader.NewTagReader(dblp, tags)
 
-	var buf strings.Builder
 	for tr.Scan() {
-		cnt++
-		buf.WriteString(tr.Text() + "\n")
-		if cnt%recordSize == 0 {
-			block, err := os.OpenFile("dblp_blocks/block_"+strconv.Itoa(cnt/recordSize)+".xml", os.O_CREATE|os.O_WRONLY, 0777)
-			if err != nil {
-				panic(err)
-			}
-			block.WriteString(buf.String())
-			buf.Reset()
-			block.Close()
-			fmt.Println("Block", cnt/recordSize, "done")
+		if strings.Contains(tr.Text(), author) {
+			cnt++
 		}
 	}
-	fmt.Println("Total records:", cnt)
+	fmt.Println(blockName, cnt)
+}
+
+func main() {
+	var author string
+	fmt.Scanln(&author)
+	fmt.Println("你输入的作者名字是：", author)
+	var wg sync.WaitGroup
+	for i := 1; i < 20; i++ {
+		wg.Add(1)
+		go queryBlock(getBlockName(i), author, &wg)
+	}
+	wg.Wait()
 }
